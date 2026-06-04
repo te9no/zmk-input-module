@@ -1,40 +1,40 @@
 # zmk-input-module
 
-Runtime-selected input module profile support for ZMK keyboards.
+ZMK キーボード向けの、実行時選択式 input module profile サポートです。
 
-This module provides the reusable core for keyboards that have several mutually-exclusive input module paths, but no reliable hardware ID pin for automatic module detection.
+この module は、複数の排他的な入力モジュール経路を持つが、信頼できるハードウェア ID ピンを持たないキーボード向けの汎用コアです。
 
-The user selects a module profile through a ZMK behavior. The selected profile is persisted in Zephyr settings, restored on the next boot, and applied before normal ZMK app initialization so the selected deferred input path can be initialized.
+ユーザーは ZMK behavior から module profile を選択します。選択値は Zephyr settings に保存され、次回起動時に復元されます。その後、通常の ZMK app 初期化より前に選択済み profile が適用され、選択された deferred input path だけを初期化できます。
 
-## Provided Features
+## 提供機能
 
 - `zmk,input-module-mux`
 - `zmk,behavior-input-module-select`
 - `zmk,input-module-sensor-proxy`
 - `zmk,input-module-kscan-proxy`
-- public capability flags in `dt-bindings/zmk/input_module.h`
-- public runtime API in `zmk/input_module.h`
+- `dt-bindings/zmk/input_module.h` の capability flag
+- `zmk/input_module.h` の runtime API
 
-## Keyboard Responsibilities
+## キーボード側の責務
 
-Keyboard config repositories should keep keyboard-specific state local:
+キーボード config repository 側には、キーボード固有の状態を残してください。
 
 - profile ID header
 - default profile
 - `settings-key`
-- keymap bindings
-- candidate device overlays
+- keymap binding
+- candidate device overlay
 - split-role wiring
 - module-specific validation notes
 
-This module should stay generic. Do not put keyboard names, keyboard-specific profile constants, pin names, or module-specific device graphs in this repository.
+この repository は汎用 module として保ちます。キーボード名、キーボード固有の profile 定数、pin 名、特定モジュール専用の device graph はここに入れないでください。
 
-## Porting Guide
+## 移植ガイド
 
-See [docs/porting-guide.md](docs/porting-guide.md) for the implementation checklist and DTS examples.
+他キーボードへの実装手順と DTS 例は [docs/porting-guide.md](docs/porting-guide.md) を参照してください。
 
-## Requirements
+## 要件
 
-The deferred candidate model requires Zephyr support for `zephyr,deferred-init` and `device_init()`.
+pin 競合する candidate device を扱う場合、`zephyr,deferred-init` と `device_init()` に対応した Zephyr が必要です。
 
-If your keyboard does not need deferred device initialization, you can still use the profile selection/settings API, but pin-conflicting module paths should be deferred to avoid initializing unused buses or GPIO routes.
+遅延初期化が不要なキーボードでも、profile 選択と settings 保存 API は利用できます。ただし、共有ピンを持つ module path では、未選択の bus や GPIO route を初期化しないために deferred candidate 化することを推奨します。
