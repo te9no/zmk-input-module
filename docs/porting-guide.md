@@ -49,7 +49,35 @@
 
 candidate device を deferred init する場合、そのキーボード repository は `zephyr,deferred-init` と `device_init()` に対応した Zephyr revision も固定する必要があります。
 
-## 2. Profile ID を定義する
+## 2. Deferred Init の意味
+
+Zephyr fork 側の具体的な変更点は [zephyr-deferred-init.md](zephyr-deferred-init.md) にまとめています。この節では、キーボード config を書く側に必要な意味だけを説明します。
+
+通常の Zephyr では、Devicetree 上で `status = "okay"` になっている device は boot 時の init sequence で自動的に初期化されます。GPIO、SPI、I2C、ADC、sensor、kscan なども、条件を満たせば起動中に driver init が走ります。
+
+交換式 module では、この通常動作が問題になります。たとえば同じ pin を `KEY` profile では GPIO direct kscan として使い、`ENC` profile では encoder A/B として使い、`TB` profile では SPI として使う場合があります。すべての candidate device が boot 時に初期化されると、未装着 module の driver まで共有 pin や bus を設定してしまいます。
+
+`zephyr,deferred-init` は、この自動初期化を止めるための指定です。device は firmware に compile され、Devicetree 上にも残ります。しかし通常 boot では `init()` が呼ばれず、`device_init(dev)` が明示的に呼ばれるまで ready になりません。
+
+`zmk-input-module` では、起動時に以下の順で処理します。
+
+1. Zephyr settings から保存済み profile を読み込む。
+2. 保存値がない場合は `default-profile` を使う。
+3. 選択された mux profile の `devices` を順番に見る。
+4. その profile に必要な device だけ `device_init()` で初期化する。
+
+これにより、1 つの firmware に複数 module の device graph を入れたまま、実際に初期化する経路を選択 profile だけに絞れます。
+
+重要な点:
+
+- deferred init は Devicetree node を無効化する機能ではありません。
+- `status = "okay"` の candidate は build 対象に残ります。
+- 未選択 candidate は通常 boot では driver init されません。
+- bus と child device の両方を deferred にする場合は、mux profile の `devices` で bus を先に並べます。
+- ZMK の静的 graph が raw deferred device を直接参照すると、未初期化 device に触れる可能性があります。その場合は sensor proxy / kscan proxy を使います。
+- 共有 pin の副作用が完全に消えるかどうかは、使用 driver と pinctrl の実装にも依存します。最終的には実機確認が必要です。
+
+## 3. Profile ID を定義する
 
 profile ID は `zmk-input-module` ではなく、キーボード repository 側に置きます。
 
@@ -75,7 +103,7 @@ profile ID は `zmk-input-module` ではなく、キーボード repository 側�
 - 定数にはキーボード名の prefix を付ける
 - capability flag は `dt-bindings/zmk/input_module.h` から使う
 
-## 3. Mux を定義する
+## 4. Mux を定義する
 
 キーボードの base overlay または共通 `.dtsi` に mux node を追加します。
 
@@ -112,7 +140,7 @@ profile ID は `zmk-input-module` ではなく、キーボード repository 側�
 
 `settings-key` はキーボード固有にしてください。複数のキーボードや module が同じ汎用実装を使う場合でも、settings の衝突を避けられます。
 
-## 4. Selection Behavior を定義する
+## 5. Selection Behavior を定義する
 
 キーボード固有の behavior node を追加します。
 
@@ -140,7 +168,7 @@ keymap から使います。
 
 この behavior は選択 profile を保存します。保存した profile は、settings 復元後の次回起動で有効になる想定です。
 
-## 5. Candidate Device を追加する
+## 6. Candidate Device を追加する
 
 candidate module device は unified overlay または snippet に置きます。排他的な candidate は基本的に `zephyr,deferred-init` を付けます。
 
@@ -188,7 +216,7 @@ SPI trackball candidate の例:
 
 順序は重要です。child device が bus に依存する場合は、bus を先に並べます。
 
-## 6. Default Profile を決める
+## 7. Default Profile を決める
 
 fresh flash 後に key path が必要で、ユーザーがそこから別 module を選択する設計なら、unified snippet 側で default profile を上書きします。
 
@@ -200,9 +228,9 @@ fresh flash 後に key path が必要で、ユーザーがそこから別 module
 
 安全な default がない場合は `MYKB_MODULE_UNSPECIFIED` のままにし、既知の settings state で flash するなど、別の運用経路を用意してください。
 
-## 7. Sensor Proxy を使う
+## 8. Sensor Proxy を使う
 
-ZMK 側には 1 つの安定した `sensor-bindings` slot が必要だが、profile によって背後の sensor device が変わる場合は `zmk,input-module-sensor-proxy` を使います。
+ZMK 側に 1 つの安定した `sensor-bindings` slot が必要で、profile によって背後の sensor device が変わる場合は `zmk,input-module-sensor-proxy` を使います。
 
 ```dts
 / {
@@ -246,9 +274,9 @@ ZMK 側には 1 つの安定した `sensor-bindings` slot が必要だが、prof
 
 active profile に sensor route がない場合、proxy は ZMK の trigger setup を受け付けますが、raw deferred sensor には触りません。
 
-## 8. Kscan Proxy を使う
+## 9. Kscan Proxy を使う
 
-ZMK 側に静的な kscan graph が必要だが、non-key profile では raw key candidate を触りたくない場合は `zmk,input-module-kscan-proxy` を使います。
+ZMK 側に静的な kscan graph が必要で、non-key profile では raw key candidate を触りたくない場合は `zmk,input-module-kscan-proxy` を使います。
 
 ```dts
 / {
@@ -279,18 +307,22 @@ ZMK の静的経路は raw candidate ではなく proxy に接続します。
 };
 ```
 
-## 9. Split Keyboard の注意点
+## 10. Split Keyboard の注意点
 
 settings は各 MCU に保存されます。そのため central half と peripheral half は、片側だけが selection behavior を受け取ったり、片側だけ settings reset された場合、異なる selected profile を保持できます。
 
+左右で別の module を接続する運用もできます。たとえば left は `TB`、right は `ENC` のように、左右で異なる selected profile を保持する構成は正常な設計です。その場合、左右を「同期すべき同一状態」として扱うのではなく、「それぞれ独立した module profile を持つ device」として扱います。
+
 推奨運用:
 
-- 両 half が behavior を受け取れる状態で profile を選択する
-- profile mismatch を疑う場合は両 half の settings を reset する
+- 左右で同じ module を使う場合は、両 half が behavior を受け取れる状態で同じ profile を選択する
+- 左右で別 module を使う場合は、left / right それぞれに意図した profile が保存されていることを確認する
+- profile mismatch を疑う場合は、両 half の settings を確認または reset してから再設定する
 - central / peripheral を別々に検証する
 - 物理的な module path が左右で異なる場合は side-specific candidate overlay を使う
+- keymap の selection behavior が split の両側にどう伝搬するかを確認する
 
-## 10. Build Target 方針
+## 11. Build Target 方針
 
 unified firmware design では、通常の build set は以下に寄せます。
 
@@ -300,7 +332,7 @@ unified firmware design では、通常の build set は以下に寄せます。
 
 unified candidate graph が動き始めたら、per-module firmware variant は残さない方がよいです。古い snippet path と runtime-selected path のどちらに問題があるのか分かりにくくなるためです。
 
-## 11. 検証チェックリスト
+## 12. 検証チェックリスト
 
 移植完了と判断する前に、以下を確認します。
 
@@ -312,6 +344,7 @@ unified candidate graph が動き始めたら、per-module firmware variant は�
 - sensor proxy が inactive encoder device に触らない
 - kscan proxy が inactive profile で raw kscan API を呼ばない
 - split profile state が両 half で期待通り動く
+- 左右で別 module を接続する場合、それぞれの profile が独立して保存・復元される
 - RAM / flash 使用量が許容範囲に収まる
 
 ## よくある落とし穴
@@ -323,3 +356,4 @@ unified candidate graph が動き始めたら、per-module firmware variant は�
 - deferred bus より先に child candidate を初期化しようとする。
 - profile 選択が reboot なしで即座に active hardware path を切り替えると誤解する。
 - central だけ検証して peripheral の独立 settings を見落とす。
+- 左右で別 module を使える設計なのに、常に同じ profile へ同期すべきだと扱ってしまう。
