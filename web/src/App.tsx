@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import { connect as gattConnect } from "@zmkfirmware/zmk-studio-ts-client/transport/gatt";
 import { connect as serialConnect } from "@zmkfirmware/zmk-studio-ts-client/transport/serial";
@@ -28,8 +28,12 @@ const SUBSYSTEM_CANDIDATES = [
 ];
 
 type StateMap = Record<number, ModuleState>;
+type PendingReportMap = Record<number, string>;
+type PendingTimerMap = Record<number, number>;
 
 const demoStates = createDemoStates();
+const RPC_TIMEOUT_MS = 7000;
+const SPLIT_REPORT_GRACE_MS = 8000;
 
 function App() {
   const [demoMode, setDemoMode] = useState(false);
@@ -109,6 +113,9 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
   const [selectedProfile, setSelectedProfile] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(demoMode ? "Demo state loaded" : "");
+  const [pendingReports, setPendingReports] = useState<PendingReportMap>({});
+  const operationRef = useRef<string | null>(null);
+  const pendingTimersRef = useRef<PendingTimerMap>({});
 
   const subsystem = useMemo(() => {
     if (!zmkApp || demoMode) {
@@ -141,6 +148,7 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
     selectedProfileInfo != null &&
     selectedProfileInfo.available &&
     !busy;
+  const pendingForTarget = pendingReports[selectedTarget];
 
   const targetOptions = useMemo(() => {
     const sources = new Set<number>([0, 1]);
@@ -166,6 +174,78 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
     }));
   }, []);
 
+  const clearPendingTimer = useCallback((source: number) => {
+    const timer = pendingTimersRef.current[source];
+    if (timer == null) {
+      return;
+    }
+
+    window.clearTimeout(timer);
+    delete pendingTimersRef.current[source];
+  }, []);
+
+  const clearPendingReport = useCallback((source: number) => {
+    clearPendingTimer(source);
+    setPendingReports((current) => {
+      if (!current[source]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[source];
+      return next;
+    });
+  }, [clearPendingTimer]);
+
+  const clearAllPendingTimers = useCallback(() => {
+    for (const source of Object.keys(pendingTimersRef.current)) {
+      clearPendingTimer(Number(source));
+    }
+  }, [clearPendingTimer]);
+
+  const clearAllPendingReports = useCallback(() => {
+    clearAllPendingTimers();
+    setPendingReports({});
+  }, [clearAllPendingTimers]);
+
+  const markPendingReport = useCallback((source: number, label: string) => {
+    clearPendingTimer(source);
+    setPendingReports((current) => ({
+      ...current,
+      [source]: label,
+    }));
+
+    pendingTimersRef.current[source] = window.setTimeout(() => {
+      delete pendingTimersRef.current[source];
+      setPendingReports((current) => {
+        if (current[source] !== label) {
+          return current;
+        }
+
+        const next = { ...current };
+        delete next[source];
+        return next;
+      });
+    }, SPLIT_REPORT_GRACE_MS);
+  }, [clearPendingTimer]);
+
+  const startOperation = useCallback((label: string) => {
+    if (operationRef.current) {
+      setStatus(`${operationRef.current} is still running. Please wait a moment.`);
+      return false;
+    }
+
+    operationRef.current = label;
+    setBusy(true);
+    setStatus(label);
+    return true;
+  }, []);
+
+  const finishOperation = useCallback(() => {
+    operationRef.current = null;
+    setBusy(false);
+  }, []);
+
   const callRPC = useCallback(
     async (request: InputModuleRequest): Promise<Response> => {
       if (!zmkApp?.state.connection || !subsystem) {
@@ -177,7 +257,9 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
         subsystem.index,
       );
       const payload = Request.encode(Request.create(request)).finish();
-      const responsePayload = await service.callRPC(payload);
+      const responsePayload = await service.callRPC(payload, {
+        timeout: RPC_TIMEOUT_MS,
+      });
 
       if (!responsePayload) {
         throw new Error("Empty RPC response");
@@ -200,8 +282,10 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
       return;
     }
 
-    setBusy(true);
-    setStatus("");
+    if (!startOperation("Loading local module state...")) {
+      return;
+    }
+
     try {
       const response = await callRPC({ getState: {} });
       const state = response.getState?.state;
@@ -213,9 +297,9 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load state");
     } finally {
-      setBusy(false);
+      finishOperation();
     }
-  }, [callRPC, demoMode, upsertState]);
+  }, [callRPC, demoMode, finishOperation, startOperation, upsertState]);
 
   const loadAll = useCallback(async () => {
     if (demoMode) {
@@ -224,8 +308,10 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
       return;
     }
 
-    setBusy(true);
-    setStatus("");
+    if (!startOperation("Requesting split module states...")) {
+      return;
+    }
+
     try {
       await callRPC({ getAllStates: {} });
       const response = await callRPC({ getState: {} });
@@ -239,9 +325,9 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
         error instanceof Error ? error.message : "Failed to request split states",
       );
     } finally {
-      setBusy(false);
+      finishOperation();
     }
-  }, [callRPC, demoMode, upsertState]);
+  }, [callRPC, demoMode, finishOperation, startOperation, upsertState]);
 
   const saveSelected = useCallback(async () => {
     if (selectedProfile == null) {
@@ -249,18 +335,29 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
     }
 
     if (demoMode) {
-      setStates((current) => ({
-        ...current,
-        [selectedTarget]: markSelected(current[selectedTarget], selectedProfile),
-      }));
+      setStates((current) => {
+        const optimisticState = markSelected(
+          current[selectedTarget],
+          selectedProfile,
+        );
+
+        return optimisticState
+          ? {
+              ...current,
+              [selectedTarget]: optimisticState,
+            }
+          : current;
+      });
       setStatus(
         `${sourceLabel(selectedTarget)} will use ${profileLabel(selectedProfileInfo)} on next boot`,
       );
       return;
     }
 
-    setBusy(true);
-    setStatus("");
+    if (!startOperation(`Saving ${profileLabel(selectedProfileInfo)}...`)) {
+      return;
+    }
+
     try {
       const response = await callRPC({
         setSelected: {
@@ -269,25 +366,57 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
         },
       });
       const state = response.setSelected?.state;
-      if (state && selectedTarget === 0) {
+      if (!response.setSelected?.requestSent) {
+        throw new Error("SetSelected response did not confirm the request");
+      }
+
+      if (state) {
         upsertState(state);
       }
+
+      if (selectedTarget === 0) {
+        clearPendingReport(0);
+      } else if (selectedTarget > 0) {
+        setStates((current) => {
+          const optimisticState = markSelected(
+            current[selectedTarget],
+            selectedProfile,
+          );
+
+          return optimisticState
+            ? {
+                ...current,
+                [selectedTarget]: optimisticState,
+              }
+            : current;
+        });
+        markPendingReport(
+          selectedTarget,
+          `${sourceLabel(selectedTarget)}:${selectedProfile}:${Date.now()}`,
+        );
+      }
       setStatus(
-        `Saved ${profileLabel(selectedProfileInfo)} for ${sourceLabel(selectedTarget)}. Reboot is required for device init changes.`,
+        selectedTarget > 0
+          ? `Saved ${profileLabel(selectedProfileInfo)} for ${sourceLabel(selectedTarget)}. Waiting for split report; UI remains usable.`
+          : `Saved ${profileLabel(selectedProfileInfo)} for ${sourceLabel(selectedTarget)}. Reboot is required for device init changes.`,
       );
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : "Failed to save selection",
       );
     } finally {
-      setBusy(false);
+      finishOperation();
     }
   }, [
     callRPC,
+    clearPendingReport,
     demoMode,
+    finishOperation,
+    markPendingReport,
     selectedProfile,
     selectedProfileInfo,
     selectedTarget,
+    startOperation,
     upsertState,
   ]);
 
@@ -295,11 +424,17 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
     if (demoMode) {
       setStates(demoStates);
       setStatus("Demo state loaded");
+      clearAllPendingReports();
     } else {
       setStates({});
       setStatus("");
+      clearAllPendingReports();
     }
-  }, [demoMode]);
+  }, [clearAllPendingReports, demoMode]);
+
+  useEffect(() => {
+    return () => clearAllPendingTimers();
+  }, [clearAllPendingTimers]);
 
   useEffect(() => {
     const state = states[selectedTarget];
@@ -330,6 +465,7 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
           const state = decoded.state?.state;
           if (state) {
             upsertState(state);
+            clearPendingReport(state.source);
             setStatus(
               `Received ${sourceLabel(state.source)} state report: ${statusLabel(state.status)}`,
             );
@@ -343,7 +479,7 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
         }
       },
     });
-  }, [demoMode, subsystem, upsertState, zmkApp]);
+  }, [clearPendingReport, demoMode, subsystem, upsertState, zmkApp]);
 
   return (
     <main className="studio-grid">
@@ -377,7 +513,7 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
             disabled={busy || !canUseSubsystem}
             onClick={loadAll}
           >
-            Refresh Split
+            {busy ? "Working..." : "Refresh Split"}
           </button>
           <button
             className="secondary"
@@ -417,6 +553,14 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
           </p>
         )}
 
+        {pendingForTarget && (
+          <p className="pending">
+            Waiting for {sourceLabel(selectedTarget)} to report back. The
+            selected profile was saved optimistically; use Refresh Split if the
+            report does not arrive.
+          </p>
+        )}
+
         <div className="profile-grid">
           {targetProfiles.map((profile) => (
             <button
@@ -451,7 +595,7 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
         </div>
 
         <button className="commit" disabled={!canSave} onClick={saveSelected}>
-          Save for Next Boot
+          {busy ? "Saving..." : "Save for Next Boot"}
         </button>
       </section>
 
@@ -467,14 +611,20 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
         ) : (
           Object.values(states)
             .sort((a, b) => a.source - b.source)
-            .map((state) => <StateCard key={state.source} state={state} />)
+            .map((state) => (
+              <StateCard
+                key={state.source}
+                pending={Boolean(pendingReports[state.source])}
+                state={state}
+              />
+            ))
         )}
       </section>
     </main>
   );
 }
 
-function StateCard({ state }: { state: ModuleState }) {
+function StateCard({ pending, state }: { pending: boolean; state: ModuleState }) {
   const available = state.profiles.filter((profile) => profile.available).length;
 
   return (
@@ -484,8 +634,12 @@ function StateCard({ state }: { state: ModuleState }) {
           <p className="eyebrow">{sourceLabel(state.source)}</p>
           <h2>{state.selectedProfileName || `Profile ${state.selectedProfileId}`}</h2>
         </div>
-        <span className={state.rebootRequired ? "badge warn" : "badge ok"}>
-          {state.rebootRequired ? "reboot needed" : "applied"}
+        <span
+          className={
+            pending ? "badge wait" : state.rebootRequired ? "badge warn" : "badge ok"
+          }
+        >
+          {pending ? "waiting report" : state.rebootRequired ? "reboot needed" : "applied"}
         </span>
       </div>
 
@@ -551,7 +705,7 @@ function capabilityLabels(capabilities: ModuleCapabilities | undefined) {
 
 function markSelected(state: ModuleState | undefined, profileId: number) {
   if (!state) {
-    return state as unknown as ModuleState;
+    return undefined;
   }
 
   const selected = state.profiles.find((profile) => profile.id === profileId);

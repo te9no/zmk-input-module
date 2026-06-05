@@ -201,9 +201,16 @@ p {
   color: var(--warn);
 }
 
+.badge.wait,
+.pending {
+  background: rgba(36, 91, 139, 0.13);
+  color: var(--wait);
+}
+
 .status,
 .warning,
-.error {
+.error,
+.pending {
   margin-top: 12px;
   padding: 0.78rem 0.9rem;
   border-radius: 16px;
@@ -329,6 +336,7 @@ p {
   --accent-dark: #7a3f1d;
   --good: #157652;
   --warn: #9f5c0d;
+  --wait: #245b8b;
   --shadow: rgba(60, 43, 22, 0.14);
 }
 
