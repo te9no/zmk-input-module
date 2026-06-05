@@ -16,6 +16,39 @@ split keyboard では、profile は左右それぞれの MCU に保存されま�
 - `zmk,input-module-kscan-proxy`
 - `dt-bindings/zmk/input_module.h` の capability flag
 - `zmk/input_module.h` の runtime API
+- DYA Studio custom subsystem: `dya__input_module`
+
+## DYA Studio SubSystem
+
+`CONFIG_ZMK_INPUT_MODULE_STUDIO_RPC=y` を有効にすると、DYA Studio から module profile を確認・選択できます。
+
+提供する subsystem ID は `dya__input_module` です。
+
+- `GetState`: central/local 側の selected/applied profile と候補 profile 一覧を返します。
+- `GetAllStates`: central の状態を notification し、split peripheral にも state report を要求します。
+- `SetSelected`: `target = 0` なら central/local、`target > 0` なら split peripheral に profile 選択要求を relay します。
+
+`SetSelected` は即時に別 module device を初期化しません。保存されるのは「次回起動で有効にする selected profile」です。pin 競合を避けるため、profile 変更後は対象 half を reboot / power-cycle してください。
+
+split peripheral には ZMK Studio RPC 本体を載せません。`ZMK_INPUT_MODULE` が split build で `ZMK_SPLIT_RELAY_EVENT` を選択し、central の DYA Studio subsystem から peripheral へ request/report を relay します。
+
+## WebUI
+
+Studio custom UI は `web/` に置いています。
+
+```sh
+cd web
+npm install
+npm run dev
+```
+
+production build は次で確認できます。
+
+```sh
+npm run build
+```
+
+Vite の default base path は `/zmk-input-module/` です。firmware 側の `CONFIG_ZMK_INPUT_MODULE_STUDIO_RPC_UI_URL` は `https://te9no.github.io/zmk-input-module/` を advertise します。
 
 ## キーボード側の責務
 

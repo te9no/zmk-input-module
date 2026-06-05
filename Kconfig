@@ -3,6 +3,7 @@ menuconfig ZMK_INPUT_MODULE
 	default y
 	depends on DT_HAS_ZMK_INPUT_MODULE_MUX_ENABLED
 	select SETTINGS
+	select ZMK_SPLIT_RELAY_EVENT if ZMK_SPLIT
 	help
 	  Provides runtime selection and settings persistence for keyboards that
 	  support multiple mutually-exclusive input module profiles.
@@ -40,6 +41,22 @@ config ZMK_INPUT_MODULE_SELECT_BEHAVIOR
 	depends on DT_HAS_ZMK_BEHAVIOR_INPUT_MODULE_SELECT_ENABLED
 	help
 	  Enables a behavior that stores the selected input module profile.
+
+config ZMK_INPUT_MODULE_STUDIO_RPC
+	bool "Enable DYA Studio RPC for input module selection"
+	depends on ZMK_STUDIO_RPC
+	select NANOPB
+	help
+	  Exposes the dya__input_module custom Studio subsystem. The subsystem
+	  lets DYA Studio list module profiles, read the selected/applied profile,
+	  and save the selected profile for the next boot.
+
+config ZMK_INPUT_MODULE_STUDIO_RPC_UI_URL
+	string "DYA Studio input module UI URL"
+	default "https://te9no.github.io/zmk-input-module/"
+	depends on ZMK_INPUT_MODULE_STUDIO_RPC
+	help
+	  URL advertised to Studio clients for the input module custom UI.
 
 module = ZMK_INPUT_MODULE
 module-str = zmk_input_module

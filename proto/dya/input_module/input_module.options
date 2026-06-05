@@ -1,0 +1,5 @@
+dya.input_module.ModuleProfile.name max_size:32
+dya.input_module.ModuleState.selected_profile_name max_size:32
+dya.input_module.ModuleState.applied_profile_name max_size:32
+dya.input_module.ModuleState.profiles max_count:16
+dya.input_module.ErrorResponse.message max_size:96

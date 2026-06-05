@@ -1,0 +1,32 @@
+{
+  "name": "zmk-input-module-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run generate && vite",
+    "build": "npm run generate && tsc -b && vite build",
+    "preview": "vite preview",
+    "generate": "buf generate"
+  },
+  "dependencies": {
+    "@cormoran/zmk-studio-react-hook": "github:cormoran/react-zmk-studio#77652d6",
+    "@zmkfirmware/zmk-studio-ts-client": "github:cormoran/zmk-studio-ts-client#custom-studio-protocol",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "^1.62.1",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "run-script-os": "^1.1.6",
+    "ts-proto": "^2.4.0",
+    "typescript": "~5.9.3",
+    "vite": "npm:rolldown-vite@7.2.5"
+  },
+  "overrides": {
+    "vite": "npm:rolldown-vite@7.2.5"
+  }
+}

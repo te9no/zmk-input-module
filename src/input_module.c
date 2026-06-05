@@ -37,6 +37,7 @@ struct input_module_profile_config {
 	uint32_t id;
 	const char *name;
 	uint32_t capabilities;
+	bool available;
 	const struct device *const *devices;
 	size_t devices_len;
 };
@@ -51,6 +52,8 @@ struct input_module_profile_config {
 		.id = DT_PROP(node_id, profile_id),                                                \
 		.name = DT_PROP(node_id, display_name),                                            \
 		.capabilities = DT_PROP_OR(node_id, capabilities, 0),                              \
+		.available = DT_NODE_HAS_PROP(node_id, devices) ||                                 \
+			     DT_PROP(node_id, profile_id) == DEFAULT_PROFILE,                      \
 		.devices = PROFILE_DEVICES_PTR(node_id),                                           \
 		.devices_len = PROFILE_DEVICES_LEN(node_id),                                       \
 	},
@@ -86,7 +89,9 @@ static const struct input_module_profile_config *find_profile(uint32_t profile_i
 
 static bool profile_valid(uint32_t profile_id)
 {
-	return find_profile(profile_id) != NULL;
+	const struct input_module_profile_config *profile = find_profile(profile_id);
+
+	return profile != NULL && profile->available;
 }
 
 static const char *enabled_disabled(bool enabled)
@@ -121,6 +126,29 @@ bool zmk_input_module_is_applied(void)
 	return applied;
 }
 
+size_t zmk_input_module_profile_count(void)
+{
+	return ARRAY_SIZE(profiles);
+}
+
+int zmk_input_module_profile_get(size_t index, struct zmk_input_module_profile *profile)
+{
+	if (profile == NULL) {
+		return -EINVAL;
+	}
+
+	if (index >= ARRAY_SIZE(profiles)) {
+		return -ENOENT;
+	}
+
+	profile->id = profiles[index].id;
+	profile->name = profiles[index].name;
+	profile->capabilities = profiles[index].capabilities;
+	profile->available = profiles[index].available;
+
+	return 0;
+}
+
 const char *zmk_input_module_profile_name(uint32_t profile_id)
 {
 	const struct input_module_profile_config *profile = find_profile(profile_id);
@@ -133,6 +161,26 @@ uint32_t zmk_input_module_profile_flags(uint32_t profile_id)
 	const struct input_module_profile_config *profile = find_profile(profile_id);
 
 	return profile == NULL ? 0 : profile->capabilities;
+}
+
+bool zmk_input_module_profile_available(uint32_t profile_id)
+{
+	const struct input_module_profile_config *profile = find_profile(profile_id);
+
+	return profile != NULL && profile->available;
+}
+
+uint32_t zmk_input_module_available_profile_mask(void)
+{
+	uint32_t mask = 0;
+
+	for (size_t i = 0; i < ARRAY_SIZE(profiles); i++) {
+		if (profiles[i].available && profiles[i].id < 32) {
+			mask |= BIT(profiles[i].id);
+		}
+	}
+
+	return mask;
 }
 
 struct zmk_input_module_capabilities zmk_input_module_profile_capabilities(uint32_t profile_id)
@@ -159,7 +207,7 @@ int zmk_input_module_apply(uint32_t profile_id)
 {
 	const struct input_module_profile_config *profile = find_profile(profile_id);
 
-	if (profile == NULL) {
+	if (profile == NULL || !profile->available) {
 		LOG_ERR("invalid input module profile: %u", profile_id);
 		return -EINVAL;
 	}

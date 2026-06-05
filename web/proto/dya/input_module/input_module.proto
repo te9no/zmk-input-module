@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package dya.input_module;
+
+message ModuleCapabilities {
+  uint32 flags = 1;
+  bool kscan = 2;
+  bool encoder = 3;
+  bool adc = 4;
+  bool spi = 5;
+  bool i2c = 6;
+}
+
+message ModuleProfile {
+  uint32 id = 1;
+  string name = 2;
+  ModuleCapabilities capabilities = 3;
+  bool selected = 4;
+  bool applied = 5;
+  bool available = 6;
+}
+
+message ModuleState {
+  uint32 selected_profile_id = 1;
+  string selected_profile_name = 2;
+  uint32 applied_profile_id = 3;
+  string applied_profile_name = 4;
+  bool applied = 5;
+  bool reboot_required = 6;
+  repeated ModuleProfile profiles = 7;
+  uint32 source = 8;
+  int32 status = 9;
+}
+
+message GetStateRequest {}
+
+message GetStateResponse {
+  ModuleState state = 1;
+}
+
+message GetAllStatesRequest {}
+
+message GetAllStatesResponse {
+  bool request_sent = 1;
+}
+
+message SetSelectedRequest {
+  uint32 profile_id = 1;
+  uint32 target = 2;
+}
+
+message SetSelectedResponse {
+  ModuleState state = 1;
+  bool request_sent = 2;
+  uint32 target = 3;
+}
+
+message ErrorResponse {
+  string message = 1;
+}
+
+message Request {
+  oneof request_type {
+    GetStateRequest get_state = 1;
+    SetSelectedRequest set_selected = 2;
+    GetAllStatesRequest get_all_states = 3;
+  }
+}
+
+message Response {
+  oneof response_type {
+    ErrorResponse error = 1;
+    GetStateResponse get_state = 2;
+    SetSelectedResponse set_selected = 3;
+    GetAllStatesResponse get_all_states = 4;
+  }
+}
+
+message StateNotification {
+  ModuleState state = 1;
+}
+
+message Notification {
+  oneof notification_type {
+    StateNotification state = 1;
+  }
+}
