@@ -216,11 +216,17 @@ p {
   border-radius: 16px;
 }
 
-.status {
+.status.success {
   background: rgba(21, 118, 82, 0.11);
   color: var(--good);
 }
 
+.status.info {
+  background: rgba(36, 91, 139, 0.11);
+  color: var(--wait);
+}
+
+.status.error,
 .error {
   background: rgba(168, 34, 34, 0.11);
   color: #982323;

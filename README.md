@@ -38,8 +38,8 @@ Studio custom UI は `web/` に置いています。
 
 ```sh
 cd web
-npm install
-npm run dev
+npm ci
+npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
 production build は次で確認できます。
@@ -49,6 +49,8 @@ npm run build
 ```
 
 Vite の default base path は `/zmk-input-module/` です。firmware 側の `CONFIG_ZMK_INPUT_MODULE_STUDIO_RPC_UI_URL` は `https://te9no.github.io/zmk-input-module/` を advertise します。
+
+WebUI からの profile 保存は「次回起動用の selected profile」を settings に保存する操作です。別 module path をその場で初期化する操作ではありません。split peripheral への保存は central 経由で relay され、UI は split state report を待つ間も操作可能なまま pending 表示にします。
 
 ## キーボード側の責務
 

@@ -30,6 +30,7 @@ const SUBSYSTEM_CANDIDATES = [
 type StateMap = Record<number, ModuleState>;
 type PendingReportMap = Record<number, string>;
 type PendingTimerMap = Record<number, number>;
+type StatusKind = "info" | "success" | "error";
 
 const demoStates = createDemoStates();
 const RPC_TIMEOUT_MS = 7000;
@@ -113,6 +114,9 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
   const [selectedProfile, setSelectedProfile] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(demoMode ? "Demo state loaded" : "");
+  const [statusKind, setStatusKind] = useState<StatusKind>(
+    demoMode ? "success" : "info",
+  );
   const [pendingReports, setPendingReports] = useState<PendingReportMap>({});
   const operationRef = useRef<string | null>(null);
   const pendingTimersRef = useRef<PendingTimerMap>({});
@@ -174,6 +178,14 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
     }));
   }, []);
 
+  const setStatusMessage = useCallback(
+    (message: string, kind: StatusKind = "info") => {
+      setStatus(message);
+      setStatusKind(kind);
+    },
+    [],
+  );
+
   const clearPendingTimer = useCallback((source: number) => {
     const timer = pendingTimersRef.current[source];
     if (timer == null) {
@@ -231,15 +243,17 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
 
   const startOperation = useCallback((label: string) => {
     if (operationRef.current) {
-      setStatus(`${operationRef.current} is still running. Please wait a moment.`);
+      setStatusMessage(
+        `${operationRef.current} is still running. Please wait a moment.`,
+      );
       return false;
     }
 
     operationRef.current = label;
     setBusy(true);
-    setStatus(label);
+    setStatusMessage(label);
     return true;
-  }, []);
+  }, [setStatusMessage]);
 
   const finishOperation = useCallback(() => {
     operationRef.current = null;
@@ -278,7 +292,7 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
   const loadLocal = useCallback(async () => {
     if (demoMode) {
       setStates(demoStates);
-      setStatus("Demo state loaded");
+      setStatusMessage("Demo state loaded", "success");
       return;
     }
 
@@ -293,18 +307,28 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
         throw new Error("GetState response did not include module state");
       }
       upsertState(state);
-      setStatus("Loaded central module state");
+      setStatusMessage("Loaded central module state", "success");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to load state");
+      setStatusMessage(
+        error instanceof Error ? error.message : "Failed to load state",
+        "error",
+      );
     } finally {
       finishOperation();
     }
-  }, [callRPC, demoMode, finishOperation, startOperation, upsertState]);
+  }, [
+    callRPC,
+    demoMode,
+    finishOperation,
+    setStatusMessage,
+    startOperation,
+    upsertState,
+  ]);
 
   const loadAll = useCallback(async () => {
     if (demoMode) {
       setStates(demoStates);
-      setStatus("Demo split state loaded");
+      setStatusMessage("Demo split state loaded", "success");
       return;
     }
 
@@ -319,15 +343,23 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
       if (state) {
         upsertState(state);
       }
-      setStatus("Requested split module states");
+      setStatusMessage("Requested split module states", "success");
     } catch (error) {
-      setStatus(
+      setStatusMessage(
         error instanceof Error ? error.message : "Failed to request split states",
+        "error",
       );
     } finally {
       finishOperation();
     }
-  }, [callRPC, demoMode, finishOperation, startOperation, upsertState]);
+  }, [
+    callRPC,
+    demoMode,
+    finishOperation,
+    setStatusMessage,
+    startOperation,
+    upsertState,
+  ]);
 
   const saveSelected = useCallback(async () => {
     if (selectedProfile == null) {
@@ -348,8 +380,9 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
             }
           : current;
       });
-      setStatus(
+      setStatusMessage(
         `${sourceLabel(selectedTarget)} will use ${profileLabel(selectedProfileInfo)} on next boot`,
+        "success",
       );
       return;
     }
@@ -395,14 +428,16 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
           `${sourceLabel(selectedTarget)}:${selectedProfile}:${Date.now()}`,
         );
       }
-      setStatus(
+      setStatusMessage(
         selectedTarget > 0
           ? `Saved ${profileLabel(selectedProfileInfo)} for ${sourceLabel(selectedTarget)}. Waiting for split report; UI remains usable.`
           : `Saved ${profileLabel(selectedProfileInfo)} for ${sourceLabel(selectedTarget)}. Reboot is required for device init changes.`,
+        selectedTarget > 0 ? "info" : "success",
       );
     } catch (error) {
-      setStatus(
+      setStatusMessage(
         error instanceof Error ? error.message : "Failed to save selection",
+        "error",
       );
     } finally {
       finishOperation();
@@ -416,6 +451,7 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
     selectedProfile,
     selectedProfileInfo,
     selectedTarget,
+    setStatusMessage,
     startOperation,
     upsertState,
   ]);
@@ -423,14 +459,14 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
   useEffect(() => {
     if (demoMode) {
       setStates(demoStates);
-      setStatus("Demo state loaded");
+      setStatusMessage("Demo state loaded", "success");
       clearAllPendingReports();
     } else {
       setStates({});
-      setStatus("");
+      setStatusMessage("");
       clearAllPendingReports();
     }
-  }, [clearAllPendingReports, demoMode]);
+  }, [clearAllPendingReports, demoMode, setStatusMessage]);
 
   useEffect(() => {
     return () => clearAllPendingTimers();
@@ -466,20 +502,22 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
           if (state) {
             upsertState(state);
             clearPendingReport(state.source);
-            setStatus(
+            setStatusMessage(
               `Received ${sourceLabel(state.source)} state report: ${statusLabel(state.status)}`,
+              state.status === 0 ? "success" : "error",
             );
           }
         } catch (error) {
-          setStatus(
+          setStatusMessage(
             error instanceof Error
               ? `Failed to decode notification: ${error.message}`
               : "Failed to decode notification",
+            "error",
           );
         }
       },
     });
-  }, [clearPendingReport, demoMode, subsystem, upsertState, zmkApp]);
+  }, [clearPendingReport, demoMode, setStatusMessage, subsystem, upsertState, zmkApp]);
 
   return (
     <main className="studio-grid">
@@ -524,7 +562,7 @@ function InputModuleStudio({ demoMode = false }: { demoMode?: boolean }) {
           </button>
         </div>
 
-        {status && <p className="status">{status}</p>}
+        {status && <p className={`status ${statusKind}`}>{status}</p>}
       </section>
 
       <section className="panel target-panel">
