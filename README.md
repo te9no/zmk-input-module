@@ -6,6 +6,8 @@ ZMK キーボード向けの、実行時選択式 input module profile サポー
 
 ユーザーは ZMK behavior から module profile を選択します。選択値は Zephyr settings に保存され、次回起動時に復元されます。その後、通常の ZMK app 初期化より前に選択済み profile が適用され、選択された deferred input path だけを初期化できます。
 
+split keyboard では、profile は左右それぞれの MCU に保存されます。profile 選択 behavior は event source、つまりそのキー入力が発生した物理 half で実行されます。左右で別 module を接続する場合は、left / right それぞれの half で profile を選択してください。
+
 ## 提供機能
 
 - `zmk,input-module-mux`

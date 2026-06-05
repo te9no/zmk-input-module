@@ -168,6 +168,8 @@ keymap から使います。
 
 この behavior は選択 profile を保存します。保存した profile は、settings 復元後の次回起動で有効になる想定です。
 
+split keyboard では、この behavior は `BEHAVIOR_LOCALITY_EVENT_SOURCE` として動作します。central 側のキーで押せば central 側に保存され、peripheral 側のキーで押せば peripheral 側に保存されます。左右で別 module を使う場合は、それぞれの物理 half で対応する profile 選択キーを押してください。
+
 ## 6. Candidate Device を追加する
 
 candidate module device は unified overlay または snippet に置きます。排他的な candidate は基本的に `zephyr,deferred-init` を付けます。
@@ -313,14 +315,18 @@ settings は各 MCU に保存されます。そのため central half と periph
 
 左右で別の module を接続する運用もできます。たとえば left は `TB`、right は `ENC` のように、左右で異なる selected profile を保持する構成は正常な設計です。その場合、左右を「同期すべき同一状態」として扱うのではなく、「それぞれ独立した module profile を持つ device」として扱います。
 
+profile 選択 behavior は event source 側で実行されます。通常の split 構成では、peripheral 側のキー入力は central に送られますが、`BEHAVIOR_LOCALITY_EVENT_SOURCE` により central が peripheral へ behavior 実行を依頼します。そのため、peripheral 側の profile を変更したい場合は peripheral 側の profile 選択キーを押します。
+
 推奨運用:
 
 - 左右で同じ module を使う場合は、両 half が behavior を受け取れる状態で同じ profile を選択する
 - 左右で別 module を使う場合は、left / right それぞれに意図した profile が保存されていることを確認する
+- central 側の profile を変えるときは central 側の profile 選択キーを押す
+- peripheral 側の profile を変えるときは peripheral 側の profile 選択キーを押す
 - profile mismatch を疑う場合は、両 half の settings を確認または reset してから再設定する
 - central / peripheral を別々に検証する
 - 物理的な module path が左右で異なる場合は side-specific candidate overlay を使う
-- keymap の selection behavior が split の両側にどう伝搬するかを確認する
+- keymap 上で、両 half から必要な profile 選択キーを押せる配置になっているか確認する
 
 ## 11. Build Target 方針
 

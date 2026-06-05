@@ -23,7 +23,7 @@ static int on_keymap_binding_released(struct zmk_behavior_binding *binding,
 static const struct behavior_driver_api behavior_input_module_select_driver_api = {
 	.binding_pressed = on_keymap_binding_pressed,
 	.binding_released = on_keymap_binding_released,
-	.locality = BEHAVIOR_LOCALITY_GLOBAL,
+	.locality = BEHAVIOR_LOCALITY_EVENT_SOURCE,
 };
 
 #if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
