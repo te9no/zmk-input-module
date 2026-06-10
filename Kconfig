@@ -17,6 +17,49 @@ config ZMK_INPUT_MODULE_SETTINGS_INIT_PRIORITY
 	  Application init priority used to restore the selected input module
 	  profile before ZMK keymap, sensor, and physical layout initialization.
 
+config ZMK_INPUT_MODULE_DEVICE_INIT_DELAY_MS
+	int "Delay between input module candidate device initialization steps"
+	default 0
+	help
+	  Optional delay inserted after each initialized candidate device before
+	  initializing the next device in the selected profile. This is useful for
+	  profiles that initialize a bus first and a child device immediately after.
+
+config ZMK_INPUT_MODULE_STATE_REPORT_CONNECT_DELAY_MS
+	int "Delay before reporting peripheral input module state after split connect"
+	default 0
+	depends on ZMK_SPLIT
+	depends on ZMK_SPLIT_RELAY_EVENT
+	help
+	  Delay in milliseconds before a split peripheral reports its selected and
+	  applied input module profile to the central half after connecting. A small
+	  delay gives the central half time to subscribe to the relay-event
+	  characteristic. Set to 0 to disable the automatic connect-time report.
+
+config ZMK_INPUT_MODULE_STATE_REPORT_BEHAVIOR_DELAY_MS
+	int "Delay before reporting input module state after keymap behavior selection"
+	default 50
+	help
+	  Delay in milliseconds before reporting module state after the keymap
+	  selection behavior saves a profile. This keeps split peripheral behavior
+	  invocation, settings writes, and relay notifications out of the same
+	  Bluetooth callback path.
+
+config ZMK_INPUT_MODULE_WORK_QUEUE_STACK_SIZE
+	int "Input module work queue stack size"
+	default 1024
+	help
+	  Stack size for the dedicated input module work queue used to run profile
+	  selection, settings writes, and state reporting outside the Bluetooth and
+	  system workqueue callback paths.
+
+config ZMK_INPUT_MODULE_WORK_QUEUE_PRIORITY
+	int "Input module work queue priority"
+	default 10
+	help
+	  Thread priority for the dedicated input module work queue. Keep this lower
+	  priority than timing-sensitive Bluetooth/input work.
+
 config ZMK_INPUT_MODULE_SENSOR_PROXY
 	bool "ZMK input module sensor proxy"
 	default y
@@ -26,6 +69,61 @@ config ZMK_INPUT_MODULE_SENSOR_PROXY
 	  Provides a sensor device that delegates to the selected input module's
 	  deferred sensor candidate.
 
+config ZMK_INPUT_MODULE_SENSOR_PROXY_TRIGGER_DEBOUNCE_MS
+	int "Sensor proxy trigger debounce delay"
+	default 0
+	depends on ZMK_INPUT_MODULE_SENSOR_PROXY
+	help
+	  Delay in milliseconds before forwarding a raw route sensor trigger to
+	  ZMK. This can coalesce mechanical encoder bounce while the raw driver
+	  keeps its GPIO interrupts disabled.
+
+config ZMK_INPUT_MODULE_SENSOR_PROXY_DROP_TRIGGER_EVENTS
+	bool "Drop sensor proxy trigger events"
+	default n
+	depends on ZMK_INPUT_MODULE_SENSOR_PROXY
+	help
+	  Diagnostic option that attaches the raw route sensor trigger but does
+	  not forward trigger events to ZMK's sensor handler. This separates raw
+	  encoder GPIO/driver issues from ZMK sensor behavior processing.
+
+config ZMK_INPUT_MODULE_SENSOR_PROXY_SKIP_TRIGGER_ATTACH
+	bool "Skip sensor proxy trigger attachment"
+	default n
+	depends on ZMK_INPUT_MODULE_SENSOR_PROXY
+	help
+	  Diagnostic option that accepts ZMK sensor trigger registration but does
+	  not attach a trigger to the selected raw route sensor. This keeps raw
+	  sensor GPIO interrupts disabled for isolating EC11 interrupt issues.
+
+config ZMK_INPUT_MODULE_SENSOR_PROXY_DIRECT_TRIGGER_HANDLER
+	bool "Forward sensor proxy triggers synchronously"
+	default n
+	depends on ZMK_INPUT_MODULE_SENSOR_PROXY
+	help
+	  Call ZMK's sensor trigger handler directly from the selected raw route
+	  sensor trigger context instead of submitting proxy work. For EC11 this
+	  keeps the raw encoder GPIO interrupts disabled until debounce and ZMK
+	  sensor processing have completed.
+
+config ZMK_INPUT_MODULE_SENSOR_PROXY_FETCH_ONLY_TRIGGER_EVENTS
+	bool "Fetch sensor proxy trigger data without raising events"
+	default n
+	depends on ZMK_INPUT_MODULE_SENSOR_PROXY
+	help
+	  Diagnostic option that handles raw route sensor triggers by fetching
+	  and converting the proxy sensor value, but does not call ZMK's sensor
+	  trigger handler or raise sensor events.
+
+config ZMK_INPUT_MODULE_SENSOR_PROXY_SAMPLE_ONLY_TRIGGER_EVENTS
+	bool "Sample sensor proxy trigger data without channel conversion"
+	default n
+	depends on ZMK_INPUT_MODULE_SENSOR_PROXY
+	help
+	  Diagnostic option that handles raw route sensor triggers by fetching
+	  the proxy sensor sample only, without channel_get conversion, ZMK's
+	  sensor trigger handler, or sensor events.
+
 config ZMK_INPUT_MODULE_KSCAN_PROXY
 	bool "ZMK input module kscan proxy"
 	default y
@@ -34,6 +132,15 @@ config ZMK_INPUT_MODULE_KSCAN_PROXY
 	help
 	  Provides a kscan device that delegates to the selected input module's
 	  deferred kscan candidate.
+
+config ZMK_INPUT_MODULE_INPUT_PROXY
+	bool "ZMK input module input event proxy"
+	default y
+	depends on INPUT
+	depends on DT_HAS_ZMK_INPUT_MODULE_INPUT_PROXY_ENABLED
+	help
+	  Provides a stable input device that forwards input events from the
+	  selected profile's deferred input candidate.
 
 config ZMK_INPUT_MODULE_SELECT_BEHAVIOR
 	bool "ZMK input module select behavior"

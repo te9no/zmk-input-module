@@ -65,7 +65,20 @@ static const struct input_module_profile_config profiles[] = {
 static uint32_t selected_profile = DEFAULT_PROFILE;
 static uint32_t applied_profile = DEFAULT_PROFILE;
 static bool applied;
-static struct k_work_delayable save_work;
+
+K_THREAD_STACK_DEFINE(input_module_work_q_stack,
+		      CONFIG_ZMK_INPUT_MODULE_WORK_QUEUE_STACK_SIZE);
+static struct k_work_q input_module_work_q;
+
+int zmk_input_module_submit_work(struct k_work *work)
+{
+	return k_work_submit_to_queue(&input_module_work_q, work);
+}
+
+int zmk_input_module_reschedule_work(struct k_work_delayable *work, int32_t delay_ms)
+{
+	return k_work_reschedule_for_queue(&input_module_work_q, work, K_MSEC(delay_ms));
+}
 
 __weak int device_init(const struct device *dev)
 {
@@ -230,6 +243,13 @@ int zmk_input_module_apply(uint32_t profile_id)
 		}
 
 		LOG_INF("initialized %s", dev->name);
+
+		if (i + 1 < profile->devices_len &&
+		    CONFIG_ZMK_INPUT_MODULE_DEVICE_INIT_DELAY_MS > 0) {
+			LOG_DBG("waiting %d ms before next input module device",
+				CONFIG_ZMK_INPUT_MODULE_DEVICE_INIT_DELAY_MS);
+			k_msleep(CONFIG_ZMK_INPUT_MODULE_DEVICE_INIT_DELAY_MS);
+		}
 	}
 
 	applied_profile = profile_id;
@@ -238,13 +258,18 @@ int zmk_input_module_apply(uint32_t profile_id)
 	return 0;
 }
 
-static void save_work_handler(struct k_work *work)
+static int save_selected_profile(void)
 {
 	int ret = settings_save_one(SETTINGS_SELECTED, &selected_profile, sizeof(selected_profile));
 
 	if (ret < 0) {
 		LOG_ERR("failed to save input module profile: %d", ret);
+		return ret;
 	}
+
+	LOG_INF("input module profile saved: %s",
+		zmk_input_module_profile_name(selected_profile));
+	return 0;
 }
 
 int zmk_input_module_select_set(uint32_t profile_id)
@@ -263,9 +288,8 @@ int zmk_input_module_select_set(uint32_t profile_id)
 	selected_profile = profile_id;
 	LOG_INF("input module profile selected for next boot: %s",
 		zmk_input_module_profile_name(selected_profile));
-	k_work_reschedule(&save_work, K_MSEC(CONFIG_ZMK_SETTINGS_SAVE_DEBOUNCE));
 
-	return 0;
+	return save_selected_profile();
 }
 
 static int input_module_settings_set(const char *name, size_t len, settings_read_cb read_cb,
@@ -331,7 +355,14 @@ SYS_INIT(input_module_settings_load_early, APPLICATION,
 
 static int input_module_init(const struct device *dev)
 {
-	k_work_init_delayable(&save_work, save_work_handler);
+	static const struct k_work_queue_config queue_config = {
+		.name = "Input Module Work Queue",
+	};
+
+	k_work_queue_start(&input_module_work_q, input_module_work_q_stack,
+			   K_THREAD_STACK_SIZEOF(input_module_work_q_stack),
+			   CONFIG_ZMK_INPUT_MODULE_WORK_QUEUE_PRIORITY, &queue_config);
+
 	LOG_INF("input module mux ready; default profile=%s",
 		zmk_input_module_profile_name(selected_profile));
 	return 0;

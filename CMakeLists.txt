@@ -7,6 +7,8 @@ zephyr_library_sources_ifdef(CONFIG_ZMK_INPUT_MODULE_SENSOR_PROXY
 	src/input_module_sensor_proxy.c)
 zephyr_library_sources_ifdef(CONFIG_ZMK_INPUT_MODULE_KSCAN_PROXY
 	src/input_module_kscan_proxy.c)
+zephyr_library_sources_ifdef(CONFIG_ZMK_INPUT_MODULE_INPUT_PROXY
+	src/input_module_input_proxy.c)
 zephyr_library_sources_ifdef(CONFIG_ZMK_INPUT_MODULE_SELECT_BEHAVIOR
 	src/behavior_input_module_select.c)
 

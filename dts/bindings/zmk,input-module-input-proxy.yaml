@@ -1,0 +1,17 @@
+description: Runtime-selected input module input event proxy
+
+compatible: "zmk,input-module-input-proxy"
+
+child-binding:
+  description: Input event route for an input module profile
+
+  properties:
+    profile-id:
+      type: int
+      required: true
+      description: Numeric input module profile ID.
+
+    input:
+      type: phandle
+      required: true
+      description: Deferred input device used when this profile is selected.
